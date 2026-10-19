@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Console de Jeux Rétro</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            background-color: #0d0e15;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            overflow-x: hidden;
+        }
+        .container {
+            max-width: 1100px;
+            width: 100%;
+            text-align: center;
+        }
+        h1 {
+            font-size: 2.8rem;
+            margin-bottom: 10px;
+            color: #00f0ff;
+            text-shadow: 0 0 15px rgba(0, 240, 255, 0.6);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+        .subtitle {
+            color: #aaa;
+            margin-bottom: 50px;
+            font-size: 1.1rem;
+        }
+        .grid-jeux {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 30px;
+            width: 100%;
+        }
+        .carte-jeu {
+            background: linear-gradient(145deg, #181926, #12131c);
+            border: 2px solid #222538;
+            border-radius: 16px;
+            padding: 30px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+        }
+        /* Effets de survol (Hover) personnalisés selon le thème du jeu */
+        .carte-jeu:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.6);
+        }
+        .jeu-esquive:hover { border-color: #ff4757; box-shadow: 0 0 20px rgba(255, 71, 87, 0.3); }
+        .jeu-drift:hover { border-color: #00d2d3; box-shadow: 0 0 20px rgba(0, 210, 211, 0.3); }
+        .jeu-3d:hover { border-color: #fffa65; box-shadow: 0 0 20px rgba(255, 250, 101, 0.3); }
+        .jeu-jetpack:hover { border-color: #00ffcc; box-shadow: 0 0 20px rgba(0, 255, 204, 0.3); }
+
+        .icone {
+            font-size: 3.5rem;
+            margin-bottom: 20px;
+        }
+        .titre-jeu {
+            font-size: 1.4rem;
+            font-weight: bold;
+            margin-bottom: 12px;
+            letter-spacing: 1px;
+        }
+        .description {
+            font-size: 0.9rem;
+            color: #888;
+            margin-bottom: 25px;
+            line-height: 1.4;
+            min-height: 55px;
+        }
+        .btn-jouer {
+            display: inline-block;
+            text-decoration: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 0.95rem;
+            color: #fff;
+            background-color: #222538;
+            border: 1px solid #3d415e;
+            transition: all 0.2s ease;
+            width: 100%;
+        }
+        /* Couleurs des boutons au survol */
+        .jeu-esquive:hover .btn-jouer { background-color: #ff4757; border-color: #ff4757; }
+        .jeu-drift:hover .btn-jouer { background-color: #00d2d3; border-color: #00d2d3; color: #111; }
+        .jeu-3d:hover .btn-jouer { background-color: #fffa65; border-color: #fffa65; color: #111; }
+        .jeu-jetpack:hover .btn-jouer { background-color: #00ffcc; border-color: #00ffcc; color: #111; }
+
+        .btn-jouer:active {
+            transform: scale(0.96);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Ma Console de Jeux</h1>
+        <p class="subtitle">Sélectionne un projet pour lancer la partie</p>
+
+        <div class="grid-jeux">
+            
+            <!-- Carte 1 : Jeu d'Esquive -->
+            <div class="carte-jeu jeu-esquive">
+                <div>
+                    <div class="icone">🚗</div>
+                    <div class="titre-jeu" style="color: #ff4757;">Course 2.5D</div>
+                    <div class="description">Esquive les voitures adverses et garde le contrôle dans cette course rétro grand écran.</div>
+                </div>
+                <a href="JEU.html" class="btn-jouer">LANCER</a>
+            </div>
+
+            <!-- Carte 2 : Jeu de Drift -->
+            <div class="carte-jeu jeu-drift">
+                <div>
+                    <div class="icone">💨</div>
+                    <div class="titre-jeu" style="color: #00d2d3;">Drift Arène</div>
+                    <div class="description">Évite la police en faisant des dérapages et récolte les caisses de bonus aléatoires.</div>
+                </div>
+                <a href="drift.html" class="btn-jouer">LANCER</a>
+            </div>
+
+            <!-- Carte 3 : Cube / Fausse 3D ou Démo -->
+            <div class="carte-jeu jeu-3d">
+                <div>
+                    <div class="icone">📦</div>
+                    <div class="titre-jeu" style="color: #fffa65;">Moteur 3D</div>
+                    <div class="description">Découvre la puissance du rendu volumétrique avec le cube interactif en vraie 3D.</div>
+                </div>
+                <a href="3d.html" class="btn-jouer">LANCER</a>
+            </div>
+
+            <!-- Carte 4 : Jetpack Cosmique -->
+            <div class="carte-jeu jeu-jetpack">
+                <div>
+                    <div class="icone">🚀</div>
+                    <div class="titre-jeu" style="color: #00ffcc;">Jetpack Cosmique</div>
+                    <div class="description">Contrôle ton astronaute et joue avec la gravité pour éviter les barrières de lasers.</div>
+                </div>
+                <!-- Redirige vers le nom exact demandé -->
+                <a href="Jetpack_Joyride.html" class="btn-jouer">LANCER</a>
+            </div>
+
+        </div>
+    </div>
+
+</body>
+</html>

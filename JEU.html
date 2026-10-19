@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Jeu de Voiture HTML5 v3 - Version Finale</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #222;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+            font-family: sans-serif;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        #conteneur-jeu {
+            position: relative;
+        }
+        canvas {
+            border: 4px solid #fff;
+            background-color: #444;
+        }
+        h1 { margin: 5px; }
+        p { margin: 5px 0 15px 0; color: #aaa; }
+        
+        #bouton-rejouer {
+            display: none;
+            position: absolute;
+            top: 65%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 12px 24px;
+            font-size: 18px;
+            font-weight: bold;
+            background-color: #2ed573;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        #bouton-rejouer:hover {
+            background-color: #26af5f;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Course 8-Bit & Record !</h1>
+    <p>Utilise GAUCHE et DROITE. Clique sur le jeu pour activer le son !</p>
+    
+    <div id="conteneur-jeu">
+        <canvas id="jeuCanvas" width="400" height="500"></canvas>
+        <button id="bouton-rejouer" onclick="reinitialiserJeu()">REJOUER</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("jeuCanvas");
+        const ctx = canvas.getContext("2d");
+        const boutonRejouer = document.getElementById("bouton-rejouer");
+
+        let joueur, obstacles, vitesseObstacles, frequenceObstacles, chronometre, score, jeuTermine;
+        let defilementRoute = 0;
+        let highScore = localStorage.getItem("voitureHighScore") || 0;
+
+        let audioCtx = null;
+        let intervalleMusique = null;
+        
+        // Tableau de notes écrit différemment pour éviter les bugs d'affichage
+        const notesMusique = Array.of(110, 130, 150, 130); 
+        let indexNote = 0;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                lancerMusique();
+            }
+        }
+
+        function jouerNote(frequence, type, duree, volume) {
+            if (!audioCtx) return;
+            try {
+                let osc = audioCtx.createOscillator();
+                let gainNode = audioCtx.createGain();
+                osc.type = type; 
+                osc.frequency.value = frequence;
+                gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duree);
+                osc.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duree);
+            } catch(e) {}
+        }
+
+        function lancerMusique() {
+            if (intervalleMusique) clearInterval(intervalleMusique);
+            intervalleMusique = setInterval(() => {
+                if (!jeuTermine) {
+                    jouerNote(notesMusique[indexNote], 'square', 0.2, 0.05);
+                    if (indexNote % 2 === 0) jouerNote(800, 'triangle', 0.04, 0.02);
+                    indexNote = (indexNote + 1) % notesMusique.length;
+                }
+            }, 250); 
+        }
+
+        function jouerSonCrash() {
+            for (let i = 0; i < 10; i++) {
+                setTimeout(() => {
+                    jouerNote(180 - (i * 15), 'sawtooth', 0.3, 0.1);
+                }, i * 30);
+            }
+        }
+
+        const touches = { ArrowLeft: false, ArrowRight: false };
+        window.addEventListener("keydown", (e) => { 
+            initAudio(); 
+            if(e.key in touches) touches[e.key] = true; 
+        });
+        window.addEventListener("keyup", (e) => { if(e.key in touches) touches[e.key] = false; });
+        canvas.addEventListener("click", initAudio); 
+
+        function reinitialiserJeu() {
+            joueur = { x: 180, y: 400, largeur: 40, hauteur: 70, vitesse: 6 };
+            obstacles = [];
+            vitesseObstacles = 4.5;
+            frequenceObstacles = 85;
+            chronometre = 0;
+            score = 0;
+            jeuTermine = false;
+            boutonRejouer.style.display = "none";
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+            mettreAJour();
+        }
+
+        function dessinerVoiture(x, y, largeur, hauteur, couleurPrincipale, estJoueur) {
+            ctx.fillStyle = couleurPrincipale;
+            ctx.fillRect(x + 5, y, largeur - 10, hauteur);
+            ctx.fillStyle = estJoueur ? "#55effc" : "#333";
+            ctx.fillRect(x + 8, y + (estJoueur ? 20 : 35), largeur - 16, 15);
+            ctx.fillStyle = "#111";
+            ctx.fillRect(x, y + 8, 6, 14);
+            ctx.fillRect(x + largeur - 6, y + 8, 6, 14);
+            ctx.fillRect(x, y + hauteur - 22, 6, 14);
+            ctx.fillRect(x + largeur - 6, y + hauteur - 22, 6, 14);
+            ctx.fillStyle = estJoueur ? "#fffa65" : "#ff4d4d"; 
+            let positionFeuxY = estJoueur ? y : y + hauteur - 4;
+            ctx.fillRect(x + 7, positionFeuxY, 6, 4);
+            ctx.fillRect(x + largeur - 13, positionFeuxY, 6, 4);
+        }
+
+        function genererObstacle() {
+            const largeur = 40;
+            const x = Math.random() * (canvas.width - largeur - 20) + 10;
+            const couleurs = ["#ff9f43", "#10ac84", "#5f27cd", "#00d2d3"];
+            const couleurAlea = couleurs[Math.floor(Math.random() * couleurs.length)];
+            obstacles.push({ x: x, y: -80, largeur: largeur, hauteur: 70, couleur: couleurAlea });
+        }
+
+        function dessinerRoute() {
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.moveTo(10, 0); ctx.lineTo(10, canvas.height);
+            ctx.moveTo(canvas.width - 10, 0); ctx.lineTo(canvas.width - 10, canvas.height);
+            ctx.stroke();
+
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 4;
+            ctx.setLineDash([15, 15]);
+            ctx.lineDashOffset = -defilementRoute;
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2, 0);
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        function mettreAJour() {
+            if (jeuTermine) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            defilementRoute += vitesseObstacles;
+            dessinerRoute();
+
+            if (touches.ArrowLeft && joueur.x > 15) joueur.x -= joueur.vitesse;
+            if (touches.ArrowRight && joueur.x < canvas.width - joueur.largeur - 15) joueur.x += joueur.vitesse;
+
+            dessinerVoiture(joueur.x, joueur.y, joueur.largeur, joueur.hauteur, "#ff4757", true);
+
+            chronometre++;
+            if (chronometre % frequenceObstacles === 0) {
+                genererObstacle();
+                if (vitesseObstacles < 13) vitesseObstacles += 0.4;
+                if (frequenceObstacles > 30) frequenceObstacles -= 3;
+            }
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                let obs = obstacles[i];
+                obs.y += vitesseObstacles;
+
+                dessinerVoiture(obs.x, obs.y, obs.largeur, obs.hauteur, obs.couleur, false);
+
+                if (
+                    joueur.x < obs.x + obs.largeur &&
+                    joueur.x + joueur.largeur > obs.x &&
+                    joueur.y < obs.y + obs.hauteur &&
+                    joueur.y + joueur.hauteur > obs.y
+                ) {
+                    jeuTermine = true;
+                    jouerSonCrash();
+                    
+                    if (score > highScore) {
+                        highScore = score;
+                        localStorage.setItem("voitureHighScore", highScore);
+                    }
+                }
+
+                if (obs.y > canvas.height) {
+                    obstacles.splice(i, 1);
+                    score++;
+                    jouerNote(440, 'sine', 0.05, 0.02);
+                }
+            }
+
+            ctx.fillStyle = "#fffa65";
+            ctx.font = "bold 18px Arial";
+            ctx.textAlign = "left";
+            ctx.fillText("SCORE: " + score, 25, 35);
+            
+            ctx.fillStyle = "#fff";
+            ctx.font = "bold 18px Arial";
+            ctx.textAlign = "right";
+            ctx.fillText("RECORD: " + highScore, canvas.width - 25, 35);
+
+            if (jeuTermine) {
+                ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.fillStyle = "#ff4757";
+                ctx.font = "bold 36px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText("CRASH !", canvas.width / 2, 180);
+                
+                ctx.fillStyle = "white";
+                ctx.font = "22px Arial";
+                ctx.fillText("Score de la course : " + score, canvas.width / 2, 230);
+                
+                ctx.fillStyle = "#fffa65";
+                ctx.fillText("Meilleur Record : " + highScore, canvas.width / 2, 270);
+                
+                boutonRejouer.style.display = "block";
+                return;
+            }
+
+            requestAnimationFrame(mettreAJour);
+        }
+
+        reinitialiserJeu();
+    </script>
+</body>
+</html>

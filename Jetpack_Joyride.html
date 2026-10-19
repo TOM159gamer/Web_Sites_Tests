@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Jetpack Cosmique</title>
+    <style>
+        body { margin: 0; background-color: #0b0c10; display: flex; justify-content: center; align-items: center; height: 100vh; color: white; font-family: sans-serif; flex-direction: column; overflow: hidden; }
+        canvas { border: 3px solid #00ffcc; background-color: #111424; box-shadow: 0 0 20px rgba(0, 255, 204, 0.3); }
+        h1 { margin: 5px; color: #00ffcc; text-shadow: 0 0 8px #00ffcc; }
+        p { margin: 5px 0 15px 0; color: #aaa; }
+    </style>
+</head>
+<body>
+
+    <h1>Jetpack Cosmique</h1>
+    <p>Reste appuyé sur **ESPACE** ou sur la **SOURIS** pour activer les propulseurs !</p>
+    <canvas id="jeuCanvas" width="700" height="400"></canvas>
+
+    <script>
+        const canvas = document.getElementById("jeuCanvas");
+        const ctx = canvas.getContext("2d");
+
+        // États du jeu
+        let joueur = { x: 100, y: 180, taille: 25, vy: 0, gravite: 0.3, impulsion: -0.6, propulseurActif: false };
+        let obstacles = [];
+        let score = 0, vitesseJeu = 3.5, jeuTermine = false;
+
+        // Écoute des contrôles (Clavier + Souris/Tactile)
+        window.addEventListener("keydown", (e) => { if(e.code === "Space") { joueur.propulseurActif = true; if(jeuTermine) reinitialiser(); } });
+        window.addEventListener("keyup", (e) => { if(e.code === "Space") joueur.propulseurActif = false; });
+        canvas.addEventListener("mousedown", () => { joueur.propulseurActif = true; if(jeuTermine) reinitialiser(); });
+        canvas.addEventListener("mouseup", () => joueur.propulseurActif = false);
+
+        function reinitialiser() {
+            joueur.y = 180; joueur.vy = 0; joueur.propulseurActif = false;
+            obstacles = []; score = 0; vitesseJeu = 3.5; jeuTermine = false;
+        }
+
+        function genererObstacle() {
+            let espace = 110; // Espace pour passer au milieu
+            let minHaut = 40;
+            let maxHaut = canvas.height - espace - 40;
+            let hauteurHaut = Math.floor(Math.random() * (maxHaut - minHaut + 1)) + minHaut;
+            obstacles.push({ x: canvas.width, y: 0, larg: 40, haut: hauteurHaut, type: "haut" });
+            obstacles.push({ x: canvas.width, y: hauteurHaut + espace, larg: 40, haut: canvas.height - (hauteurHaut + espace), type: "bas" });
+        }
+
+        function mettreAJour() {
+            if (jeuTermine) return;
+
+            score++;
+            if (score % 500 === 0) vitesseJeu += 0.5; // Accélération globale
+
+            // Application de la physique (Jetpack ou Gravité)
+            if (joueur.propulseurActif) joueur.vy += joueur.impulsion;
+            else joueur.vy += joueur.gravite;
+
+            // Limitation de la vitesse de chute/montée pour rester maniable
+            joueur.vy = Math.max(Math.min(joueur.vy, 7), -6);
+            joueur.y += joueur.vy;
+
+            // Collisions avec les bords (Plafond et Sol)
+            if (joueur.y < 0) { joueur.y = 0; joueur.vy = 0; }
+            if (joueur.y + joueur.taille > canvas.height) { jeuTermine = true; }
+
+            // Apparition des barrières laser
+            if (score % 110 === 0) genererObstacle();
+
+            // Avancement et collisions des obstacles
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                let o = obstacles[i];
+                o.x -= vitesseJeu;
+
+                // Nettoyage des obstacles sortis
+                if (o.x + o.larg < 0) { obstacles.splice(i, 1); continue; }
+
+                // Vérification de collision AABB
+                if (joueur.x < o.x + o.larg && joueur.x + joueur.taille > o.x &&
+                    joueur.y < o.y + o.haut && joueur.y + joueur.taille > o.y) {
+                    jeuTermine = true;
+                }
+            }
+        }
+
+        function dessiner() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Étoiles en arrière-plan
+            ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
+            for(let i=0; i<25; i++) ctx.fillRect((i*43)%canvas.width, (i*19)%canvas.height, 2, 2);
+
+            // Propulsion du Jetpack (petits carrés jaunes/oranges à l'arrière)
+            if (joueur.propulseurActif && !jeuTermine) {
+                ctx.fillStyle = Math.random() < 0.5 ? "#ffa502" : "#ff4757";
+                ctx.fillRect(joueur.x - 12, joueur.y + 10, 10, 12);
+            }
+
+            // Joueur (Combinaison spatiale néon)
+            ctx.fillStyle = joueur.propulseurActif ? "#00ffcc" : "#00a8ff";
+            ctx.fillRect(joueur.x, joueur.y, joueur.taille, joueur.taille);
+            // Visière du casque
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(joueur.x + 15, joueur.y + 4, 8, 6);
+
+            // Obstacles (Murs lasers rouges)
+            ctx.fillStyle = "#ff4d4d";
+            obstacles.forEach(o => {
+                ctx.fillRect(o.x, o.y, o.larg, o.haut);
+                // Effet de lueur laser sur les bords internes
+                ctx.fillStyle = "#ffafaf";
+                if(o.type === "haut") ctx.fillRect(o.x, o.haut - 4, o.larg, 4);
+                else ctx.fillRect(o.x, o.y, o.larg, 4);
+                ctx.fillStyle = "#ff4d4d"; // Réinitialisation de la couleur
+            });
+
+            // Affichage UI Score
+            ctx.fillStyle = "#fff"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "left";
+            ctx.fillText("SCORE : " + Math.floor(score/10), 20, 35);
+
+            // Écran de défaite
+            if (jeuTermine) {
+                ctx.fillStyle = "rgba(11, 12, 16, 0.85)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.textAlign = "center"; ctx.font = "bold 40px sans-serif"; ctx.fillStyle = "#ff4d4d";
+                ctx.fillText("CRASH SPATIAL", canvas.width / 2, 170);
+                ctx.fillStyle = "#fff"; ctx.font = "20px sans-serif";
+                ctx.fillText("Score : " + Math.floor(score/10) + " points", canvas.width / 2, 220);
+                ctx.font = "16px sans-serif"; ctx.fillText("Appuie sur ESPACE ou CLIQUE pour redémarrer", canvas.width / 2, 280);
+            }
+        }
+
+        function boucle() { mettreAJour(); dessiner(); requestAnimationFrame(boucle); }
+        boucle();
+    </script>
+</body>
+</html>

@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Tower Defense Spatial</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #0f111a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+            font-family: sans-serif;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        canvas {
+            border: 3px solid #00d2d3;
+            background-color: #161a2b;
+            box-shadow: 0 0 30px rgba(0, 210, 211, 0.3);
+        }
+        h1 { margin: 5px; color: #00d2d3; }
+        p { margin: 5px 0 15px 0; color: #aaa; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <h1>Défense du Cristal Spatial</h1>
+    <p>Clique sur la zone verte pour **placer une Tourelle (Coût : 50 $)**.<br>Élimine les vagues d'ennemis avant qu'ils n'attaquent le cristal !</p>
+    <canvas id="tdCanvas" width="800" height="500"></canvas>
+
+    <script>
+        const canvas = document.getElementById("tdCanvas");
+        const ctx = canvas.getContext("2d");
+
+        // Paramètres de jeu
+        let argent = 150;
+        let vies = 10;
+        let score = 0;
+        let vague = 1;
+        let jeuTermine = false;
+
+        let tourelles = [];
+        let ennemis = [];
+        let projectiles = [];
+        let chronometre = 0;
+
+        // Définition du chemin des monstres (liste de points X, Y)
+        const chemin = [
+            {x: 0, y: 80},
+            {x: 250, y: 80},
+            {x: 250, y: 260},
+            {x: 550, y: 260},
+            {x: 550, y: 420},
+            {x: 800, y: 420}
+        ];
+
+        // Lancement d'une vague d'ennemis
+        function lancerNouvelleVague() {
+            let nbrEnnemis = 5 + vague * 2;
+            let pointsDeVie = 30 + vague * 15;
+            let vitesse = 1.2 + Math.min(vague * 0.1, 1);
+
+            for (let i = 0; i < nbrEnnemis; i++) {
+                // On espace les départs des monstres
+                setTimeout(() => {
+                    if (!jeuTermine) {
+                        ennemis.push({
+                            x: chemin[0].x,
+                            y: chemin[0].y,
+                            etapeChemin: 0,
+                            pv: pointsDeVie,
+                            pvMax: pointsDeVie,
+                            vitesse: vitesse,
+                            rayon: 12,
+                            recompense: 15
+                        });
+                    }
+                }, i * 900);
+            }
+        }
+
+        // Placer une tourelle lors d'un clic
+        canvas.addEventListener("click", (e) => {
+            if (jeuTermine) return;
+
+            let limites = canvas.getBoundingClientRect();
+            let clicX = e.clientX - limites.left;
+            let clicY = e.clientY - limites.top;
+
+            // Vérifier si on a assez d'argent
+            if (argent >= 50) {
+                // Empêcher de poser sur le chemin de manière simplifiée
+                let surChemin = false;
+                if ((clicY > 40 && clicY < 120 && clicX < 290) || 
+                    (clicX > 210 && clicX < 290 && clicY >= 80 && clicY <= 300) ||
+                    (clicY > 220 && clicY < 300 && clicX > 210 && clicX < 590) ||
+                    (clicX > 510 && clicX < 590 && clicY >= 260 && clicY <= 460) ||
+                    (clicY > 380 && clicY < 460 && clicX > 510)) {
+                    surChemin = true;
+                }
+
+                if (!surChemin) {
+                    tourelles.push({
+                        x: clicX,
+                        y: clicY,
+                        portee: 120,
+                        cadenceTir: 35, // Plus le chiffre est petit, plus elle tire vite
+                        timerTir: 0,
+                        rayon: 16
+                    });
+                    argent -= 50;
+                }
+            }
+        });
+
+        function mettreAJour() {
+            if (jeuTermine) return;
+            chronometre++;
+
+            // Démarrage automatique des vagues au début ou quand la zone est vide
+            if (ennemis.length === 0 && chronometre > 60) {
+                lancerNouvelleVague();
+                vague++;
+                chronometre = 0;
+            }
+
+            // --- 1. GESTION DES ENNEMIS ---
+            for (let i = ennemis.length - 1; i >= 0; i--) {
+                let enc = ennemis[i];
+                let ciblePoint = chemin[enc.etapeChemin + 1];
+
+                // Calcul du déplacement vers le prochain virage
+                let dx = ciblePoint.x - enc.x;
+                let dy = ciblePoint.y - enc.y;
+                let distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance > enc.vitesse) {
+                    enc.x += (dx / distance) * enc.vitesse;
+                    enc.y += (dy / distance) * enc.vitesse;
+                } else {
+                    enc.etapeChemin++;
+                    // Si l'ennemi atteint la fin du labyrinthe (le cristal)
+                    if (enc.etapeChemin >= chemin.length - 1) {
+                        vies--;
+                        ennemis.splice(i, 1);
+                        if (vies <= 0) jeuTermine = true;
+                        continue;
+                    }
+                }
+            }
+
+            // --- 2. GESTION DES TOURELLES & TIRS ---
+            tourelles.forEach(t => {
+                if (t.timerTir > 0) t.timerTir--;
+
+                // Trouver l'ennemi le plus proche à portée
+                let cible = null;
+                let distanceMin = t.portee;
+
+                ennemis.forEach(e => {
+                    let dist = Math.sqrt((e.x - t.x)**2 + (e.y - t.y)**2);
+                    if (dist < distanceMin) {
+                        distanceMin = dist;
+                        cible = e;
+                    }
+                });
+
+                // Tirer sur la cible
+                if (cible && t.timerTir === 0) {
+                    projectiles.push({
+                        x: t.x,
+                        y: t.y,
+                        cible: cible,
+                        vitesse: 6,
+                        degats: 15,
+                        rayon: 4
+                    });
+                    t.timerTir = t.cadenceTir;
+                }
+            });
+
+            // --- 3. GESTION DES PROJECTILES ---
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                let p = projectiles[i];
+                
+                // Si la cible est morte entre-temps, détruire le projectile
+                if (!ennemis.includes(p.cible)) {
+                    projectiles.splice(i, 1);
+                    continue;
+                }
+
+                let dx = p.cible.x - p.x;
+                let dy = p.cible.y - p.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist > p.vitesse) {
+                    p.x += (dx / dist) * p.vitesse;
+                    p.y += (dy / dist) * p.vitesse;
+                } else {
+                    // Impact !
+                    p.cible.pv -= p.degats;
+                    projectiles.splice(i, 1);
+
+                    // Mort de l'ennemi
+                    if (p.cible.pv <= 0) {
+                        let idx = ennemis.indexOf(p.cible);
+                        if (idx > -1) {
+                            argent += p.cible.recompense;
+                            score += 20;
+                            ennemis.splice(idx, 1);
+                        }
+                    }
+                }
+            }
+        }
+
+        function dessinerTout() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 1. Dessiner le sol en herbe décorative
+            ctx.fillStyle = "#1e272c";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 2. Dessiner la route grise des monstres
+            ctx.strokeStyle = "#4b5563";
+            ctx.lineWidth = 50;
+            ctx.lineCap = "round";
+            ctx.lineJoin = "round";
+            ctx.beginPath();
+            chemin.forEach((p, idx) => {
+                if (idx === 0) ctx.moveTo(p.x, p.y);
+                else ctx.lineTo(p.x, p.y);
+            });
+            ctx.stroke();
+
+            // 3. Dessiner le Cristal Sacré à protéger (en bas à droite)
+            ctx.fillStyle = "#00d2d3";
+            ctx.beginPath();
+            ctx.moveTo(760, 420); ctx.lineTo(790, 390); ctx.lineTo(800, 450); ctx.lineTo(740, 450);
+            ctx.fill();
+
+            // 4. Dessiner les tourelles posées (Cercles cybernétiques bleus)
+            tourelles.forEach(t => {
+                // Zone de portée transparente
+                ctx.fillStyle = "rgba(0, 210, 211, 0.05)";
+                ctx.beginPath(); ctx.arc(t.x, t.y, t.portee, 0, Math.PI * 2); ctx.fill();
+
+                // Corps de la tour
+                ctx.fillStyle = "#0984e3";
+                ctx.beginPath(); ctx.arc(t.x, t.y, t.rayon, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = "#55efc4";
+                ctx.fillRect(t.x - 4, t.y - 12, 8, 12); // Canon
+            });
+
+            // 5. Dessiner les ennemis (Monstres rouges avec barres de vie)
+            ennemis.forEach(e => {
+                ctx.fillStyle = "#ff4757";
+                ctx.beginPath(); ctx.arc(e.x, e.y, e.rayon, 0, Math.PI * 2); ctx.fill();
+
+                // Jauge de points de vie au-dessus du monstre
+                let ratioVie = e.pv / e.pvMax;
+                ctx.fillStyle = "#222";
+                ctx.fillRect(e.x - 15, e.y - 22, 30, 4);
+                ctx.fillStyle = "#2ed573";
+                ctx.fillRect(e.x - 15, e.y - 22, 30 * ratioVie, 4);
+            });
+
+            // 6. Dessiner les lasers volants (Projectiles)
+            ctx.fillStyle = "#edf2f7";
+            projectiles.forEach(p => {
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.rayon, 0, Math.PI * 2); ctx.fill();
+            });
+
+                        // 7. Interface Graphique (UI)
+            ctx.fillStyle = "white"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "left";
+            ctx.fillText("💰 ARGENT : " + argent + " $", 20, 35);
+            ctx.fillText("⭐ SCORE : " + score, 180, 35);
+            ctx.fillText("🌊 VAGUE : " + (vague - 1), 320, 35);
+            
+            ctx.fillStyle = "#ff4757"; ctx.textAlign = "right";
+            ctx.fillText("❤️ VIES DU CRISTAL : " + vies + " / 10", canvas.width - 20, 35);
+
+            // 8. Écran d'échec / Fin de partie
+            if (jeuTermine) {
+                ctx.fillStyle = "rgba(10, 10, 25, 0.9)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.textAlign = "center"; ctx.font = "bold 45px sans-serif";
+                ctx.fillStyle = "#ff4757";
+                ctx.fillText("LE CRISTAL A ÉTÉ DÉTRUIT", canvas.width / 2, 220);
+                
+                ctx.fillStyle = "white"; ctx.font = "22px sans-serif";
+                ctx.fillText("Tu as survécu jusqu'à la vague " + (vague - 1), canvas.width / 2, 280);
+                ctx.font = "16px sans-serif"; ctx.fillText("Actualise ton navigateur pour relancer une partie", canvas.width / 2, 340);
+            }
+        }
+        function boucleJeu() {
+            mettreAJour();
+            dessinerTout();
+            requestAnimationFrame(boucleJeu);
+        }
+
+        // Lancement immédiat du jeu
+        boucleJeu();
+    </script>
+</body>
+</html>

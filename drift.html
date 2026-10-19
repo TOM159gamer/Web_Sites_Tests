@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Jeu de Drift 2D - Police Chase</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #1e1e24;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+            font-family: sans-serif;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        #conteneur-jeu {
+            position: relative;
+        }
+        canvas {
+            border: 4px solid #fff;
+            background-color: #33333a;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+        }
+        h1 { margin: 5px; }
+        p { margin: 5px 0 15px 0; color: #bbb; text-align: center; }
+        
+        #bouton-rejouer {
+            display: none;
+            position: absolute;
+            top: 65%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 12px 24px;
+            font-size: 18px;
+            font-weight: bold;
+            background-color: #ff4757;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        #bouton-rejouer:hover {
+            background-color: #ff2e44;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Course-Poursuite & Drift</h1>
+    <p>Avancer : ⬆️ | Reculer : ⬇️ | Tourner : ⬅️ ➡️<br>Esquive la police et attrape l'or !</p>
+    
+    <div id="conteneur-jeu">
+        <canvas id="driftCanvas" width="600" height="450"></canvas>
+        <button id="bouton-rejouer" onclick="reinitialiserJeu()">RECOMMENCER</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("driftCanvas");
+        const ctx = canvas.getContext("2d");
+        const boutonRejouer = document.getElementById("bouton-rejouer");
+
+        // États du jeu
+        let joueur, obstacles, piece, score, vies, jeuTermine, tracesPneus, chronometre;
+
+        // Gestion du clavier
+        const touches = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
+        window.addEventListener("keydown", (e) => { if (e.key in touches) touches[e.key] = true; });
+        window.addEventListener("keyup", (e) => { if (e.key in touches) touches[e.key] = false; });
+
+        function repositionnerPiece() {
+            piece = {
+                x: Math.random() * (canvas.width - 60) + 30,
+                y: Math.random() * (canvas.height - 60) + 30,
+                rayon: 8
+            };
+        }
+
+        function reinitialiserJeu() {
+            joueur = {
+                x: 300, y: 300, angle: 0, vitesse: 0, vitesseMax: 4.5,
+                acceleration: 0.15, deceleration: 0.05, vitesseRotation: 0.06,
+                largeur: 30, hauteur: 15, couleur: "#00d2d3", clignotement: 0
+            };
+
+            // Ajout de 2 voitures de police à des endroits différents
+            obstacles = [
+                { x: 100, y: 100, angle: 0, vitesse: 2.2, largeur: 30, hauteur: 15 },
+                { x: 500, y: 100, angle: 0, vitesse: 2.2, largeur: 30, hauteur: 15 }
+            ];
+
+            score = 0;
+            vies = 5;
+            chronometre = 0;
+            jeuTermine = false;
+            tracesPneus = [];
+            boutonRejouer.style.display = "none";
+            repositionnerPiece();
+            
+            // Relancer la boucle si elle n'est pas active
+            if(chronometre === 0) boucleJeu();
+        }
+
+        function mettreAJourPhysics() {
+            if (jeuTermine) return;
+
+            chronometre++;
+
+            // --- PHYSIQUE JOUEUR ---
+            if (touches.ArrowUp) {
+                joueur.vitesse = Math.min(joueur.vitesse + joueur.acceleration, joueur.vitesseMax);
+            } else if (touches.ArrowDown) {
+                joueur.vitesse = Math.max(joueur.vitesse - joueur.acceleration, -joueur.vitesseMax / 2);
+            } else {
+                if (joueur.vitesse > 0) joueur.vitesse = Math.max(joueur.vitesse - joueur.deceleration, 0);
+                if (joueur.vitesse < 0) joueur.vitesse = Math.min(joueur.vitesse + joueur.deceleration, 0);
+            }
+
+            if (Math.abs(joueur.vitesse) > 0.1) {
+                const directionTourne = joueur.vitesse > 0 ? 1 : -1;
+                if (touches.ArrowLeft) joueur.angle -= joueur.vitesseRotation * directionTourne;
+                if (touches.ArrowRight) joueur.angle += joueur.vitesseRotation * directionTourne;
+            }
+
+            joueur.x += Math.cos(joueur.angle) * joueur.vitesse;
+            joueur.y += Math.sin(joueur.angle) * joueur.vitesse;
+
+            // Limites écran joueur
+            if (joueur.x < 15) joueur.x = 15;
+            if (joueur.x > canvas.width - 15) joueur.x = canvas.width - 15;
+            if (joueur.y < 15) joueur.y = 15;
+            if (joueur.y > canvas.height - 15) joueur.y = canvas.height - 15;
+
+            // Traces de dérapage
+            if (Math.abs(joueur.vitesse) > 2 && (touches.ArrowLeft || touches.ArrowRight)) {
+                tracesPneus.push({ x: joueur.x, y: joueur.y });
+                if (tracesPneus.length > 100) tracesPneus.shift();
+            }
+
+            // Réduction du temps d'invincibilité
+            if (joueur.clignotement > 0) joueur.clignotement--;
+
+            // --- IA POLICE (Poursuite) ---
+            obstacles.forEach(police => {
+                // Calcul de l'angle vers le joueur
+                let dx = joueur.x - police.x;
+                let dy = joueur.y - police.y;
+                police.angle = Math.atan2(dy, dx);
+
+                // Déplacement vers le joueur
+                police.x += Math.cos(police.angle) * police.vitesse;
+                police.y += Math.sin(police.angle) * police.vitesse;
+
+                // Détection collision avec joueur
+                let distJoueurX = joueur.x - police.x;
+                let distJoueurY = joueur.y - police.y;
+                let distJoueur = Math.sqrt(distJoueurX * distJoueurX + distJoueurY * distJoueurY);
+
+                if (distJoueur < 20 && joueur.clignotement === 0) {
+                    vies--;
+                    joueur.clignotement = 90; // Reste invincible pendant 1.5 seconde (90 frames)
+                    
+                    if (vies <= 0) {
+                        jeuTermine = true;
+                        boutonRejouer.style.display = "block";
+                    }
+                }
+            });
+
+            // --- COLLISION PIÈCE ---
+            let distPieceX = joueur.x - piece.x;
+            let distPieceY = joueur.y - piece.y;
+            let distPiece = Math.sqrt(distPieceX * distPieceX + distPieceY * distPieceY);
+
+            if (distPiece < 22) {
+                score++;
+                repositionnerPiece();
+                // Rendre les policiers légèrement plus rapides à chaque pièce ramassée pour augmenter la difficulté
+                obstacles.forEach(p => p.vitesse += 0.15);
+            }
+        }
+
+        function dessinerVoiture(x, y, angle, couleur, estPolice, clignote) {
+            // Si le joueur clignote (invincible), on ne le dessine qu'une image sur deux
+            if (clignote && Math.floor(chronometre / 6) % 2 === 0) return;
+
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+
+            // Carrosserie
+            ctx.fillStyle = couleur;
+            ctx.fillRect(-15, -7.5, 30, 15);
+
+            if (estPolice) {
+                // Portières blanches pour la police américaine
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(-5, -7.5, 10, 15);
+                
+                // Gyrofare clignotant
+                ctx.fillStyle = (Math.floor(chronometre / 10) % 2 === 0) ? "#ff4757" : "#2ed573";
+                ctx.fillRect(-2, -2, 4, 4);
+            } else {
+                // Vitres joueur
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(5, -6, 6, 12);
+            }
+
+            // Phares avant
+            ctx.fillStyle = "#fffa65";
+            ctx.fillRect(13, -6, 2, 3);
+            ctx.fillRect(13, 3, 2, 3);
+
+            ctx.restore();
+        }
+
+        function dessinerTout() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 1. Traces de pneus
+            ctx.strokeStyle = "rgba(0, 0, 0, 0.2)";
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            for (let i = 0; i < tracesPneus.length; i++) {
+                if (i === 0) ctx.moveTo(tracesPneus[i].x, tracesPneus[i].y);
+                else ctx.lineTo(tracesPneus[i].x, tracesPneus[i].y);
+            }
+            ctx.stroke();
+
+            // 2. Pièce d'or
+            if (!jeuTermine) {
+                ctx.fillStyle = "#ffd700";
+                ctx.beginPath();
+                ctx.arc(piece.x, piece.y, piece.rayon, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = "#fffa65";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            // 3. Voiture du joueur
+            dessinerVoiture(joueur.x, joueur.y, joueur.angle, joueur.couleur, false, joueur.clignotement > 0);
+
+            // 4. Les voitures de police
+            obstacles.forEach(police => {
+                dessinerVoiture(police.x, police.y, police.angle, "#1e1e24", true, false);
+            });
+
+            // 5. Interface UI (Score et Vies)
+            ctx.fillStyle = "white";
+            ctx.font = "bold 18px sans-serif";
+            ctx.textAlign = "left";
+            ctx.fillText("SCORE : " + score, 20, 35);
+
+            // Dessin des cœurs pour les vies
+            ctx.fillStyle = "#ff4757";
+            ctx.font = "20px sans-serif";
+            let cœurs = "";
+            for(let i=0; i<vies; i++) cœurs += "❤️ ";
+            ctx.fillText("VIES : " + cœurs, canvas.width - 200, 35);
+
+                       // 6. Écran de Game Over
+            if (jeuTermine) {
+                ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = "#ff4757";
+                ctx.font = "bold 40px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText("ARRÊTÉ PAR LA POLICE !", canvas.width / 2, 180);
+
+                ctx.fillStyle = "white";
+                ctx.font = "22px sans-serif";
+                ctx.fillText("Tu as récupéré " + score + " pièces d'or", canvas.width / 2, 240);
+            }
+        }
+
+        function boucleJeu() {
+            mettreAJourPhysics();
+            dessinerTout();
+            if (!jeuTermine) {
+                requestAnimationFrame(boucleJeu);
+            }
+        }
+
+        // Démarrage initial
+        reinitialiserJeu();
+    </script>
+</body>
+</html>
+
